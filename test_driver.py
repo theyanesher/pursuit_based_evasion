@@ -1,0 +1,133 @@
+import ray
+import numpy as np
+import torch
+import csv
+
+from model import PolicyNet
+from test_worker import Test_worker
+from test_parameter import *
+
+def run_test():
+    device = torch.device('cuda') if USE_GPU_TEST else torch.device('cpu')
+    global_network = PolicyNet(NODE_INPUT_DIM, FRONTIER_CLUSTER_INPUT_DIM, EMBEDDING_DIM)
+
+    if device == torch.device('cuda'):
+        print('Using GPU', load_path)
+        checkpoint = torch.load(f'{load_path}/checkpoint.pth',  weights_only=True)
+    else:
+        print('Using CPU', load_path)
+        checkpoint = torch.load(f'{load_path}/checkpoint.pth', map_location=torch.device('cpu'),  weights_only=True)
+
+    global_network.load_state_dict(checkpoint['policy_model'])
+
+    meta_agents = [Runner.remote(i) for i in range(NUM_META_AGENT)]
+    weights = global_network.state_dict()
+    curr_test = 0
+
+    dist_history = []
+    true_dist_history = []
+    explored_rate_history = []
+    explored_rate_ground = []
+    safe_rate_history = []
+    success_rate_history = []
+    safe_increase_rate_history = []
+    all_length_history = []
+    all_safe_rate_history = []
+    all_explored_rate_history = []
+    all_explored_rate_ground_history = []
+
+    job_list = []
+    for i, meta_agent in enumerate(meta_agents):
+        job_list.append(meta_agent.job.remote(weights, curr_test))
+        curr_test += 1
+
+    try:
+        while len(dist_history) < curr_test:
+            done_id, job_list = ray.wait(job_list)
+            done_jobs = ray.get(done_id)
+
+            for job in done_jobs:
+                metrics, info = job
+                dist_history.append(metrics['travel_dist'])
+                true_dist_history.append(metrics['true_travel_dist'])
+                explored_rate_history.append(metrics['explored_rate'])
+                explored_rate_ground.append(metrics['explored_rate_ground'])
+                safe_rate_history.append(metrics['safe_rate'])
+                success_rate_history.append(metrics['success_rate'])
+                safe_increase_rate_history.append(metrics['safe_increase_rate'])
+                all_length_history.extend(metrics['length_history'])
+                all_safe_rate_history.extend(metrics['safe_rate_history'])
+                all_explored_rate_history.extend(metrics['explored_rate_history'])
+                all_explored_rate_ground_history.extend(metrics['explored_rate_ground_history'])
+
+                if curr_test < NUM_TEST:
+                    job_list.append(meta_agents[info['id']].job.remote(weights, curr_test))
+                    curr_test += 1
+
+        print('=====================================')
+        print('|#Test:', FOLDER_NAME)
+        print('|#Number of agents:', N_AGENTS)
+        print('|#Total test:', NUM_TEST)
+        print('|#Average max length:', np.array(dist_history).mean())
+        print('|#Std max length:', np.array(dist_history).std())
+        print('|#Average explored rate:', np.array(explored_rate_history).mean())
+        print('|#Average explored rate ground:', np.array(explored_rate_ground).mean())
+        print('|#Average safe rate:', np.array(safe_rate_history).mean())
+        print('|#Average success rate:', np.array(success_rate_history).mean())
+
+        if SAVE_CSV:
+            idx = np.array(all_length_history).argsort()
+            all_length_history = np.array(all_length_history)[idx]
+            all_safe_rate_history = np.array(all_safe_rate_history)[idx]
+            all_explored_rate_history = np.array(all_explored_rate_history)[idx]
+            all_explored_rate_ground_history = np.array(all_explored_rate_ground_history)[idx]
+            with open(f'results/result_rl_n={N_AGENTS}.csv', mode='w', newline='') as file:
+                writer = csv.writer(file)
+                writer.writerow(['length', 'safe', 'explore', 'ground_explore'])
+                csv_data = np.concatenate([all_length_history.reshape(-1, 1), all_safe_rate_history.reshape(-1, 1),
+                                           all_explored_rate_history.reshape(-1, 1), all_explored_rate_ground_history.reshape(-1,1)], axis=-1)
+                writer.writerows(csv_data)
+            print('CSV saved')
+
+    except KeyboardInterrupt:
+        print("CTRL_C pressed. Killing remote workers")
+        for a in meta_agents:
+            ray.kill(a)
+
+@ray.remote(num_cpus=1, num_gpus=NUM_GPU/NUM_META_AGENT)
+class Runner(object):
+    def __init__(self, meta_agent_id):
+        self.meta_agent_id = meta_agent_id
+        self.device = torch.device('cuda') if USE_GPU_TEST else torch.device('cpu')
+        self.local_network = PolicyNet(NODE_INPUT_DIM, FRONTIER_CLUSTER_INPUT_DIM, EMBEDDING_DIM)
+        self.local_network.to(self.device)
+
+    def set_weights(self, weights):
+        self.local_network.load_state_dict(weights)
+
+    def do_job(self, episode_number):
+        worker = Test_worker(self.meta_agent_id, self.local_network, episode_number, N_AGENTS, device=self.device, save_image=SAVE_GIFS, save_path=gifs_path, greedy=True)
+        worker.run_episode()
+
+        perf_metrics = worker.perf_metrics
+        return perf_metrics
+
+    def job(self, weights, episode_number):
+        print("Starting episode {} on metaAgent {}".format(episode_number, self.meta_agent_id))
+        # set the local weights to the global weight values from the master network
+        self.set_weights(weights)
+
+        metrics = self.do_job(episode_number)
+
+        info = {
+            "id": self.meta_agent_id,
+            "episode_number": episode_number,
+        }
+
+        return metrics, info
+
+if __name__ == '__main__':
+    ray.init()
+    for i in range(NUM_RUN):
+        run_test()
+
