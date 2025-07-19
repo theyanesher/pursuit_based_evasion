@@ -62,43 +62,6 @@ class DurhamWorker:
         self.agent_status = [0] * self.env.n_agents  # 0: follower, 1: frontier guard
         self.agent_next_location = [None] * self.env.n_agents
 
-    # def assign_frontier_guard(self, best_locations):
-    #     frontier_guards = []
-    #     for location in best_locations:
-    #         min_dist = float('inf')
-    #         frontier_guard = None
-    #         best_path = None
-            
-    #         for robot in self.robot_list:
-    #             if robot.id in frontier_guards:
-    #                 continue
-                    
-    #             # Get path and handle failures
-    #             path_coords, dist = self.node_manager.a_star(robot.location, location)
-                
-    #             # Skip if no path found (critical fix)
-    #             if path_coords is None or len(path_coords) == 0:
-    #                 print(f"No path for robot {robot.id} to location {location}")
-    #                 continue
-                    
-    #             if dist < min_dist:
-    #                 min_dist = dist
-    #                 frontier_guard = robot.id
-    #                 best_path = path_coords
-            
-    #         # Handle cases where no robot/path was found
-    #         if frontier_guard is None:
-    #             print(f"No available robot or path for location {location}")
-    #             continue
-                
-    #         frontier_guards.append(frontier_guard)
-    #         self.agent_status[frontier_guard] = 1
-    #         self.agent_next_location[frontier_guard] = best_path[0] if best_path else robot.location
-        
-    #     # Remove assertion to handle empty frontier_guards
-    #     if not frontier_guards:
-    #         print("Warning: No frontier guards assigned!")
-
     def assign_frontier_guard(self, best_locations):  # TODO: if best_locations len > n_agent then stop
         frontier_guards = []
         for location in best_locations:
@@ -182,7 +145,7 @@ class DurhamWorker:
     def find_next_best_views(self):
         # all_node_coords = self.robot_list[0].node_coords
         all_node_coords = self.robot_list[0].node_coords
-        self.utility = self.robot_list[0].utility
+        self.utility = self.robot_list[0].utility_safe
         non_zero_utility_node_indices = np.argwhere(self.utility > 0)[:, 0].tolist()
         if len(non_zero_utility_node_indices) == 0:
             print("Not able to find next best view - using current positions - all nodes utility are 0")
@@ -191,7 +154,7 @@ class DurhamWorker:
         candidate_node_coords = all_node_coords[non_zero_utility_node_indices]
         imaginary_safe_zone = self.env.safe_zone
         best_imaginary_safe_zone = self.env.safe_zone
-        max_increase = 1
+        max_increase = 3
         best_locations = []
         filtered_indices = []
         best_coords = None
@@ -208,7 +171,7 @@ class DurhamWorker:
                     if (dist_to_candidate < SENSOR_RANGE) and (
                             # not check_collision(location, coords, self.env.belief_ground,
                             not check_collision(location, coords, self.robot_height,
-                                                map_info=self.env.flight_info,
+                                                map_info=self.env.ground_info,
                                                 max_cell_height=self.env.max_height_cell)):
                         candidate_flag = False
                         break
@@ -230,200 +193,7 @@ class DurhamWorker:
             if best_coords is None:
                 return None
             best_locations.append(best_coords)
-            max_increase = 1
-
-    # def find_next_best_views(self):
-    #     all_node_coords = self.robot_list[0].node_coords
-    #     self.utility = self.robot_list[0].utility
-    #     non_zero_utility_node_indices = np.argwhere(self.utility > 0)[:, 0].tolist()
-        
-    #     if len(non_zero_utility_node_indices) == 0:
-    #         print("Not able to find next best view - using current positions")
-    #         return [robot.location.tolist() for robot in self.robot_list]
-        
-    #     candidate_node_coords = all_node_coords[non_zero_utility_node_indices]
-    #     imaginary_safe_zone = self.env.safe_zone
-    #     best_imaginary_safe_zone = self.env.safe_zone
-    #     max_increase = 2
-    #     best_locations = []
-    #     processed_candidates = set()
-    #     iteration = 0
-    #     max_iterations = 10  # Safety limit
-        
-    #     while iteration < max_iterations:
-    #         iteration += 1
-    #         best_coords = None
-    #         best_increase = max_increase
-            
-    #         for i, coords in enumerate(candidate_node_coords):
-    #             if tuple(coords) in processed_candidates:
-    #                 continue
-                    
-    #             # Skip if candidate is too close to robot's current position
-    #             robot_distances = [np.linalg.norm(coords - robot.location) for robot in self.robot_list]
-    #             if min(robot_distances) < 1e-5:  # Essentially current position
-    #                 processed_candidates.add(tuple(coords))
-    #                 continue
-                    
-    #             candidate_flag = True
-    #             for location in best_locations:
-    #                 if location is None:
-    #                     continue
-    #                 dist_to_candidate = np.linalg.norm(location - coords)
-    #                 if (dist_to_candidate < SENSOR_RANGE) and (
-    #                     not check_collision(location, coords, self.robot_height,
-    #                                         map_info=self.env.flight_info,
-    #                                         max_cell_height=self.env.max_height_cell)):
-    #                     candidate_flag = False
-    #                     break
-                        
-    #             if not candidate_flag:
-    #                 processed_candidates.add(tuple(coords))
-    #                 continue
-                    
-    #             robot_cell = get_cell_position_from_coords(coords, self.env.ground_info)
-    #             new_imaginary_safe_zone, safe_increase = self.update_imaginary_safe_zone(robot_cell, imaginary_safe_zone)
-                
-    #             if safe_increase > best_increase:
-    #                 best_increase = safe_increase
-    #                 best_coords = coords
-    #                 best_imaginary_safe_zone = new_imaginary_safe_zone
-                    
-    #         if best_coords is None:
-    #             break  # No improvement found
-                
-    #         # Add only if not current position (redundant but safe)
-    #         robot_distances = [np.linalg.norm(best_coords - robot.location) for robot in self.robot_list]
-    #         if min(robot_distances) > 1e-5:
-    #             best_locations.append(best_coords)
-    #             processed_candidates.add(tuple(best_coords))
-                
-    #         imaginary_safe_zone = best_imaginary_safe_zone
-    #         max_increase = best_increase  # Maintain improvement threshold
-            
-    #     if len(best_locations) == 0:
-    #         print("No valid viewpoints found - using current positions")
-    #         return [robot.location.tolist() for robot in self.robot_list]
-            
-    #     return best_locations
-
-
-    # def run_episode(self):
-    #     t = time.time()
-    #     # for robot in self.robot_list:
-    #     for i, robot in enumerate(self.robot_list):
-    #         robot.update_graph(self.env.flight_info, self.env.ground_info, deepcopy(self.env.robot_locations[robot.id]),
-    #                            self.env.safe_info, self.env.global_frontiers, self.env.global_frontiers_ground,
-    #                            self.env.global_safe_zone_frontiers,
-    #                            self.env.uncovered_safe_frontiers, self.env.robot_locations, k=i)
-    #
-    #     for robot in self.robot_list:
-    #         robot.update_past_locations()
-    #
-    #     for robot in self.robot_list:
-    #         robot.update_planning_state(self.env.robot_locations)
-    #
-    #     if self.save_image:
-    #         # self.env.plot_env(-1, -1, self.robot_list, self.node_manager,self.selected_frontiers)
-    #         self.env.plot_env(-1, -1, self.robot_list, self.ground_truth_node_manager, self.selected_frontiers,
-    #                           self.node_manager)
-    #
-    #     max_travel_dist = 0
-    #
-    #     length_list = [max_travel_dist]
-    #     safe_rate_list = [self.env.safe_rate]
-    #     explored_rate_list = [self.env.explored_rate]
-    #
-    #     for i in range(MAX_EPISODE_STEP):
-    #         done = False
-    #         self.agent_status = [0] * self.env.n_agents
-    #         best_locations = self.find_next_best_views()
-    #         if best_locations is None:
-    #             continue
-    #         self.assign_frontier_guard(best_locations)
-    #         self.assign_follower()
-    #
-    #         next_locations = []
-    #         dist_list = []
-    #         for robot in self.robot_list:
-    #             next_location = self.agent_next_location[robot.id]
-    #             next_locations.append(next_location)
-    #             dist_list.append(np.linalg.norm(next_location - robot.location))
-    #
-    #         next_locations = self.solve_path_confict(next_locations, dist_list)
-    #
-    #         selected_locations = np.array(next_locations).tolist()
-    #         safe_ratio = self.env.step(i, selected_locations, self.robot_list, self.ground_truth_node_manager)
-    #         if NUM_TEST == 1:
-    #
-    #             frontier_guards = [robot.id for robot in self.robot_list if self.agent_status[robot.id] == 1]
-    #             followers = [robot.id for robot in self.robot_list if self.agent_status[robot.id] == 0]
-    #
-    #             print(f"Step {i}\tFrontier guards: {frontier_guards}\tFollowers: {followers}")
-    #
-    #         if self.save_image:
-    #             for robot in self.robot_list:
-    #                 # nodes = get_cell_position_from_coords(robot.location, robot.global_safe_info)
-    #                 nodes = get_cell_position_from_coords(robot.location, robot.global_flight_info)
-    #                 if nodes.ndim == 1:
-    #                     continue
-    #             # self.env.plot_env(i, SIM_STEP, self.robot_list, self.node_manager)
-    #             self.env.plot_env(i, SIM_STEP, self.robot_list, self.ground_truth_node_manager,
-    #             self.selected_frontiers)
-    #
-    #
-    #         tmp_safe_zone_frontier = copy(self.env.global_safe_zone_frontiers)
-    #         for _ in range(8):
-    #             self.env.decrease_safety(next_locations)
-    #             self.env.global_safe_zone_frontiers = get_safe_zone_frontier(self.env.safe_info, self.env.flight_info)
-    #             if np.array_equal(tmp_safe_zone_frontier, self.env.global_safe_zone_frontiers):
-    #                 break
-    #             else:
-    #                 tmp_safe_zone_frontier = copy(self.env.global_safe_zone_frontiers)
-    #
-    #
-    #         self.env.classify_safe_frontier(next_locations)
-    #
-    #         for robot in self.robot_list:
-    #             robot.update_graph(self.env.flight_info, self.env.ground_info,
-    #                                deepcopy(self.env.robot_locations[robot.id]),
-    #                                self.env.safe_info, self.env.global_frontiers, self.env.global_frontiers_ground,
-    #                                self.env.global_safe_zone_frontiers,
-    #                                self.env.uncovered_safe_frontiers, self.env.robot_locations, k=i)
-    #
-    #         for robot in self.robot_list:
-    #             robot.update_planning_state(self.env.robot_locations)
-    #
-    #         max_travel_dist += np.max(dist_list)
-    #         if safe_ratio > 0.96:
-    #             done = True
-    #
-    #         length_list.append(max_travel_dist)
-    #         safe_rate_list.append(self.env.safe_rate)
-    #         explored_rate_list.append(self.env.explored_rate)
-    #         if max_travel_dist >= 1000:
-    #             max_travel_dist = 1000
-    #             break
-    #
-    #         if done:
-    #             if self.save_image:
-    #                 # self.env.plot_env(i + 1, SIM_STEP, self.robot_list, self.ground_truth_node_manager)
-    #                 self.env.plot_env(i + 1, 0, self.robot_list, self.ground_truth_node_manager,
-    #                                   self.selected_frontiers)
-    #                 # self.plot_local_env(i + 1)
-    #             break
-    #
-    #     if NUM_TEST == 1:
-    #         print(
-    #             f"{TEST_N_AGENTS} agents, max travelled distance: {max_travel_dist}, explored rate: {self.env.explored_rate}, cleared rate: {self.env.safe_rate}")
-    #
-    #     if self.save_image:
-    #         make_gif(gifs_path, self.global_step, self.env.frame_files, self.env.explored_rate)
-    #
-    #     perf_metrics = [max_travel_dist, self.env.explored_rate, self.env.safe_rate, done, length_list, safe_rate_list,
-    #                     explored_rate_list]
-    #     print(time.time() - t)
-    #     return perf_metrics
+            max_increase = 3
     
     def run_episode(self): 
         t = time.time()
@@ -468,6 +238,7 @@ class DurhamWorker:
                 next_locations.append(next_location)
                 dist_list.append(np.linalg.norm(next_location - robot.location))
             self.robot_list[0].next_locations = np.array(next_locations)
+            self.robot_list[0].best_locations = np.array(best_locations)
             print('next locations', next_locations)
             selected_locations, _ = self.check_frontier_coverage(next_locations)
             # selected_locations = next_locations

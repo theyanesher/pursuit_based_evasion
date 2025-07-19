@@ -17,6 +17,7 @@ class Agent:
         self.robot_height_cell = robot_height_cell
         self.max_robot_height_cell = max_height_cell
         self.next_locations = None
+        self.best_locations = None
         # location and global map
         self.location = None
         self.global_flight_info = None
