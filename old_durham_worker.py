@@ -158,33 +158,38 @@ class DurhamWorker:
         best_locations = []
         filtered_indices = []
         best_coords = None
+        robot_locations = []
+        for robo in self.robot_list:
+            robot_locations.append(robo.location)
 
         while True:
             for i, coords in enumerate(candidate_node_coords):
-                if i in filtered_indices:
-                    continue
-                candidate_flag = True
-                for location in best_locations:
-                    if location is None:
-                        pass
-                    dist_to_candidate = np.linalg.norm(location - coords)
-                    if (dist_to_candidate < SENSOR_RANGE) and (
-                            # not check_collision(location, coords, self.env.belief_ground,
-                            not check_collision(location, coords, self.robot_height,
-                                                map_info=self.env.ground_info,
-                                                max_cell_height=self.env.max_height_cell)):
-                        candidate_flag = False
-                        break
-                if candidate_flag:
-                    robot_cell = get_cell_position_from_coords(coords, self.env.ground_info)
-                    new_imaginary_safe_zone, safe_increase = self.update_imaginary_safe_zone(robot_cell,
-                                                                                             imaginary_safe_zone)
-                    if safe_increase > max_increase:
-                        max_increase = safe_increase
-                        best_coords = coords
-                        best_imaginary_safe_zone = new_imaginary_safe_zone
-                else:
-                    filtered_indices.append(i)
+                # print('coords', coords, 'robot', self.robot_list[0].location)
+                if coords not in np.array(robot_locations):
+                    if i in filtered_indices:
+                        continue
+                    candidate_flag = True
+                    for location in best_locations:
+                        if location is None:
+                            pass
+                        dist_to_candidate = np.linalg.norm(location - coords)
+                        if (dist_to_candidate < SENSOR_RANGE) and (
+                                # not check_collision(location, coords, self.env.belief_ground,
+                                not check_collision(location, coords, self.robot_height,
+                                                    map_info=self.env.ground_info,
+                                                    max_cell_height=self.env.max_height_cell)):
+                            candidate_flag = False
+                            break
+                    if candidate_flag:
+                        robot_cell = get_cell_position_from_coords(coords, self.env.ground_info)
+                        new_imaginary_safe_zone, safe_increase = self.update_imaginary_safe_zone(robot_cell,
+                                                                                                imaginary_safe_zone)
+                        if safe_increase > max_increase:
+                            max_increase = safe_increase
+                            best_coords = coords
+                            best_imaginary_safe_zone = new_imaginary_safe_zone
+                    else:
+                        filtered_indices.append(i)
 
             if len(best_locations) > 0 and np.all(best_coords == best_locations[-1]):
                 return best_locations

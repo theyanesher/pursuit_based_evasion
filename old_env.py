@@ -597,13 +597,13 @@ class Env:
             # Convert the selected frontiers to cell coordinates using the same flight_info
             selected_frontiers_cells = get_cell_position_from_coords(selected_frontiers_array, self.flight_info)
             next_locations = get_cell_position_from_coords(robots[0].next_locations, self.flight_info)
-            best_locations = get_cell_position_from_coords(robots[0].best_locations, self.flight_info)
-            plt.scatter(selected_frontiers_cells[:, 0], selected_frontiers_cells[:, 1],
-                        c='magenta', s=15, edgecolors='k', zorder=10, label='Selected Frontiers')
+            # best_locations = get_cell_position_from_coords(robots[0].best_locations, self.flight_info)
+            # plt.scatter(best_locations[:, 0], best_locations[:, 1],
+            #             c='orange', s=15, edgecolors='k', zorder=10, label='Best Locations')
             plt.scatter(next_locations[:, 0], next_locations[:, 1],
                         c='green', s=15, edgecolors='k', zorder=10, label='Next Locations')
-            plt.scatter(best_locations[:, 0], best_locations[:, 1],
-                        c='orange', s=15, edgecolors='k', zorder=10, label='Best Locations')
+            plt.scatter(selected_frontiers_cells[:, 0], selected_frontiers_cells[:, 1],
+                        c='magenta', s=15, edgecolors='k', zorder=10, label='Selected Frontiers')
             # Optional: add a legend if you want to identify the selected frontiers
             # plt.legend(loc='upper right')
         # -------------------------------
